@@ -243,6 +243,22 @@ class BackendMPIMaster(Backend):
         return pds_res
 
 
+    def flatMap(self, func, pds):
+        """
+        Implements exactly the functionality of its base class.
+        """
+
+        pass
+
+
+    def groupByKey(self, pds):
+        """
+        Implements exactly the functionality of its base class.
+        """
+
+        pass
+
+
     def collect(self, pds):
         """
         Gather the pds from all the workers,
@@ -495,6 +511,22 @@ class BackendMPISlave(Backend):
         pds_res = PDSMPI(rdd, pds_id_new, self)
 
         return pds_res
+
+
+    def flatMap(self, func, pds):
+        """
+        Implements exactly the functionality of its base class.
+        """
+
+
+        pass
+
+    def groupByKey(self, pds):
+        """
+        Implements exactly the functionality of its base class.
+        """
+
+        pass
 
 
     def collect(self, pds):

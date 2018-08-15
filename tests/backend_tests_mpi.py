@@ -1,6 +1,7 @@
 import unittest
 from mpi4py import MPI
 from abcpy.backends import BackendMPI,BackendMPITestHelper
+from tests.backend_tests import BackendTests
 
 
 def setUpModule():
@@ -21,8 +22,10 @@ def setUpModule():
     rank = comm.Get_rank()
     backend_mpi = BackendMPI()
 
-class MPIBackendTests(unittest.TestCase):
-
+class MPIBackendTests(BackendTests, unittest.TestCase):
+    def setUp(self):
+        self.backends = [backend_mpi]
+    
     def test_parallelize(self):
         data = [0]*backend_mpi.size
         pds = backend_mpi.parallelize(data)
@@ -32,30 +35,6 @@ class MPIBackendTests(unittest.TestCase):
         for master_index in backend_mpi.master_node_ranks:
             self.assertTrue(master_index not in res,"Node in master_node_ranks performed map.")
 
-    def test_map(self):
-        data = [1,2,3,4,5]
-        pds = backend_mpi.parallelize(data)
-        pds_map = backend_mpi.map(lambda x:x**2,pds)
-        res = backend_mpi.collect(pds_map)
-        assert res==list(map(lambda x:x**2,data))
-
-
-    def test_broadcast(self):
-        data = [1,2,3,4,5]
-        pds = backend_mpi.parallelize(data)
-
-        bds = backend_mpi.broadcast(100)
-
-        #Pollute the BDS values of the master to confirm slaves
-        # use their broadcasted value
-        for k,v in  backend_mpi.bds_store.items():
-             backend_mpi.bds_store[k] = 99999
-
-        def test_map(x):
-            return x + bds.value()
-
-        pds_m = backend_mpi.map(test_map, pds)
-        self.assertTrue(backend_mpi.collect(pds_m)==[101,102,103,104,105])
 
     def test_pds_delete(self):
 

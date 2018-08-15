@@ -74,6 +74,47 @@ class Backend(metaclass = ABCMeta):
         
         raise NotImplementedError
 
+    @abstractmethod
+    def flatMap(self, func, pds):
+        """
+        Same as map, but flatMap can return for every input element zero, one, or mulitple output elements.
+
+        Since flatMap can return multiple output elements, the passed function should return a list.
+
+        Parameters
+        ----------
+        func: Python func
+            A function that can be applied to every element of the pds, the result has to be of type list.
+        pds: PDS class
+            A parallel data set to which func should be applied
+        
+        Returns
+        -------
+        PDS class
+            a new parallel data set that contains the result of the flatMap
+        """
+
+        raise NotImplementedError
+
+    @abstractmethod
+    def groupByKey(self, pds):
+        """
+        Groups a PDS of key/value pairs according to its key.
+
+        The resulting PDS contains the key/list of value pairs from the source PDS.
+
+        Parameters
+        ----------
+        pds: PDS class
+            A parallel data set of type [(k,v),..]
+
+        Returns
+        -------
+        PDS class
+            A new parallel data set that contains the result of groupByKey in the form [(k,[v,..],..)]
+        """
+    
+        raise NotImplementedError
 
     @abstractmethod
     def collect(self, pds):
@@ -122,107 +163,4 @@ class BDS:
         raise NotImplementedError
 
 
-class BackendDummy(Backend):
-    """
-    This is a dummy parallelization backend, meaning it doesn't parallelize
-    anything. It is mainly implemented for testing purpose.
-
-    """
-    
-    def __init__(self):
-        pass
-
-    
-    def parallelize(self, python_list):
-        """
-        This actually does nothing: it just wraps the Python list into dummy pds (PDSDummy).
-
-        Parameters
-        ----------
-        python_list: Python list
-        Returns
-        -------        
-        PDSDummy (parallel data set)
-        """
-        
-        return PDSDummy(python_list)
-
-    
-    def broadcast(self, object):
-        """
-        This actually does nothing: it just wraps the object into BDSDummy.
-
-        Parameters
-        ----------
-        object: Python object
-        
-        Returns
-        -------        
-        BDSDummy class
-        """
-        
-        return BDSDummy(object)
-
-    
-    def map(self, func, pds):
-        """
-        This is a wrapper for the Python internal map function.
-
-        Parameters
-        ----------
-        func: Python func
-            A function that can be applied to every element of the pds
-        pds: PDSDummy class
-            A pseudo-parallel data set to which func should be applied
-        
-        Returns
-        -------
-        PDSDummy class
-            a new pseudo-parallel data set that contains the result of the map
-        """
-        
-        result_map = map(func, pds.python_list)
-        result_pds = PDSDummy(list(result_map))
-        return result_pds
-
-    
-    def collect(self, pds):
-        """
-        Returns the Python list stored in PDSDummy
-
-        Parameters
-        ----------
-        pds: PDSDummy class
-            a pseudo-parallel data set
-        Returns
-        -------
-        Python list
-            all elements of pds as a list
-        """
-        
-        return pds.python_list
-
-    
-
-class PDSDummy(PDS):
-    """
-    This is a wrapper for a Python list to fake parallelization.
-    """
-    
-    def __init__(self, python_list):
-        self.python_list = python_list
-
-        
-
-class BDSDummy(BDS):
-    """
-    This is a wrapper for a Python object to fake parallelization.
-    """
-    
-    def __init__(self, object):
-        self.object = object
-
-        
-    def value(self):
-        return self.object
 
