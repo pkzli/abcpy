@@ -775,12 +775,32 @@ class PMC(BaseLikelihood, InferenceMethod):
                         new_parameters[ind, :] = perturbation_output[1]
                         break
             # 2: calculate approximate lieklihood for new parameters
-            # print("INFO: Calculate approximate likelihood.")
-            new_parameters_pds = self.backend.parallelize(new_parameters)
-            approx_likelihood_new_parameters_and_counter_pds = self.backend.map(self._approx_lik_calc, new_parameters_pds)
-            # print("DEBUG: Collect approximate likelihood from pds.")
-            approx_likelihood_new_parameters_and_counter = self.backend.collect(approx_likelihood_new_parameters_and_counter_pds)
-            approx_likelihood_new_parameters, counter = [list(t) for t in zip(*approx_likelihood_new_parameters_and_counter)]
+
+            # # Following is without flatmap
+            # # print("INFO: Calculate approximate likelihood.")
+            # new_parameters_pds = self.backend.parallelize(new_parameters)
+            # approx_likelihood_new_parameters_and_counter_pds = self.backend.map(self._approx_lik_calc, new_parameters_pds)
+            # # print("DEBUG: Collect approximate likelihood from pds.")
+            # approx_likelihood_new_parameters_and_counter = self.backend.collect(approx_likelihood_new_parameters_and_counter_pds)
+            # approx_likelihood_new_parameters, counter = [list(t) for t in zip(*approx_likelihood_new_parameters_and_counter)]
+
+            # # Following is without flatmap
+            # Simulate n_samples_per_param many dataset for each parameter and put them together
+            repeated_new_parameters_array = np.repeat(new_parameters, self.n_samples_per_param, axis=0)
+            new_parameters_repeated_pds = self.backend.parallelize(repeated_new_parameters_array)
+            approx_lik_sim_theta_data_pds = self.backend.map(self._approx_lik_simulate_data_part, new_parameters_repeated_pds)
+            approx_lik_sim_theta_data = self.backend.collect(approx_lik_sim_theta_data_pds)
+            theta, sim_data = [list(t) for t in zip(*approx_lik_sim_theta_data)]
+            merged_sim_data_parameter = []
+            for ind in range(0,self.n_samples):
+                merged_sim_data_parameter.append([[[sim_data[np.int(i)][0][0] for i in np.where(np.mean(theta==new_parameters[ind,:],axis=1)==1)[0]]],new_parameters[ind,:]]) # Need to generalize when we have more than two output data
+
+            # Compute likelihood for each parameter value
+            merged_sim_data_parameter_pds = self.backend.parallelize(merged_sim_data_parameter)
+            approx_likelihood_new_parameters_and_counter_new_pds = self.backend.map(self._approx_lik_compute_value_part, merged_sim_data_parameter_pds)
+            approx_likelihood_new_parameters_and_counter_new = self.backend.collect(approx_likelihood_new_parameters_and_counter_new_pds)
+            approx_likelihood_new_parameters, counter = [list(t) for t in zip(*approx_likelihood_new_parameters_and_counter_new)]
+
 
             approx_likelihood_new_parameters = np.array(approx_likelihood_new_parameters).reshape(-1,1)
 
@@ -789,6 +809,7 @@ class PMC(BaseLikelihood, InferenceMethod):
 
             # 3: calculate new weights for new parameters
             # print("INFO: Calculating weights.")
+            new_parameters_pds = self.backend.parallelize(new_parameters)
             new_weights_pds = self.backend.map(self._calculate_weight, new_parameters_pds)
             new_weights = np.array(self.backend.collect(new_weights_pds)).reshape(-1, 1)
 
@@ -840,7 +861,28 @@ class PMC(BaseLikelihood, InferenceMethod):
         return journal
 
     # define helper functions for map step
-    def _approx_lik_calc(self, theta):
+    def _approx_lik_simulate_data_part(self, theta):
+        """
+        Simulate n_sample_per_param many datasets for new parameter
+
+        Parameters
+        ----------
+        theta: numpy.ndarray
+            1xp matrix containing the model parameters, where p is the number of parameters
+
+        Returns
+        -------
+        (theta, sim_data)
+            tehta and simulate data
+        """
+
+        # Simulate the fake data from the model given the parameter value theta
+        # print("DEBUG: Simulate model for parameter " + str(theta))
+        y_sim = self.simulate(1, self.rng)
+
+        return (theta, y_sim)
+
+    def _approx_lik_compute_value_part(self, sim_data_parameter):
         """
         Compute likelihood for new parameters using approximate likelihood function
 
@@ -854,14 +896,12 @@ class PMC(BaseLikelihood, InferenceMethod):
         float
             The approximated likelihood function
         """
+        # Extract data and parameter
+        y_sim, theta = sim_data_parameter[0], sim_data_parameter[1]
 
-        # Simulate the fake data from the model given the parameter value theta
-        # print("DEBUG: Simulate model for parameter " + str(theta))
-        y_sim = self.simulate(self.n_samples_per_param, self.rng)
         # print("DEBUG: Extracting observation.")
         obs = self.accepted_parameters_manager.observations_bds.value()
         # print("DEBUG: Computing likelihood...")
-
 
         total_pdf_at_theta = 1.
 
@@ -874,6 +914,41 @@ class PMC(BaseLikelihood, InferenceMethod):
 
         # print("DEBUG: prior pdf evaluated at theta is :" + str(pdf_at_theta))
         return (total_pdf_at_theta, 1)
+
+    # def _approx_lik_calc(self, theta):
+    #     """
+    #     Compute likelihood for new parameters using approximate likelihood function
+    #
+    #     Parameters
+    #     ----------
+    #     theta: numpy.ndarray
+    #         1xp matrix containing the model parameters, where p is the number of parameters
+    #
+    #     Returns
+    #     -------
+    #     float
+    #         The approximated likelihood function
+    #     """
+    #
+    #     # Simulate the fake data from the model given the parameter value theta
+    #     # print("DEBUG: Simulate model for parameter " + str(theta))
+    #     y_sim = self.simulate(self.n_samples_per_param, self.rng)
+    #     # print("DEBUG: Extracting observation.")
+    #     obs = self.accepted_parameters_manager.observations_bds.value()
+    #     # print("DEBUG: Computing likelihood...")
+    #
+    #
+    #     total_pdf_at_theta = 1.
+    #
+    #     lhd = self.likfun.likelihood(obs, y_sim)
+    #
+    #     # print("DEBUG: Likelihood is :" + str(lhd))
+    #     pdf_at_theta = self.pdf_of_prior(self.model, theta)
+    #
+    #     total_pdf_at_theta*=(pdf_at_theta*lhd)
+    #
+    #     # print("DEBUG: prior pdf evaluated at theta is :" + str(pdf_at_theta))
+    #     return (total_pdf_at_theta, 1)
 
     def _calculate_weight(self, theta):
         """
